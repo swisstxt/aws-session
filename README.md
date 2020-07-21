@@ -30,12 +30,13 @@ this security token, and your current shell will have a valid MFA-authenticated
 AWS session.
 
 When the session expires, you have to manually recreate the token. Unset the
-created environment variables to do this:
+created environment variables to do this, then execute `aws-session` again:
 
 ```shell
 unset AWS_ACCESS_KEY_ID
 unset AWS_SECRET_ACCESS_KEY
 unset AWS_SESSION_TOKEN
+eval $(aws-session)
 ```
 
 ## Legal
