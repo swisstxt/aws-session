@@ -2,18 +2,70 @@
 
 set -e
 
-echo "To use this script, execute it like this: eval \$(aws-session)" >&2
+echo "Generate and set temporary AWS session tokens for the AWS CLI or other tools." >&2
+echo "To use this script, execute it like this: eval \$(aws-session [options])" >&2
+echo >&2
 
 which aws >/dev/null || { echo "Required but not installed: aws" >&2; exit 1; }
 which jq >/dev/null || { echo "Required but not installed: jq" >&2; exit 1; }
 
-mfa_devices=$(aws iam list-mfa-devices)
-mfa_device=$(echo "${mfa_devices}" | jq -r '.MFADevices[0].SerialNumber')
-echo "Found MFA device: ${mfa_device}" >&2
+# default mode: generate MFA-authenticated session
+mode=mfa
 
-read -p "Please input MFA token code: " token_code >&2
+if [ "$#" -gt "0" ]; then
+    mode="$1"
+fi
+case "$mode" in
+    mfa)
+        if [ "$#" -gt "1" ]; then
+            mfa_device="$2"
+        else
+            mfa_devices=$(aws iam list-mfa-devices)
+            mfa_device=$(echo "${mfa_devices}" | jq -r '.MFADevices[0].SerialNumber')
+        fi
+        echo "Using MFA device: ${mfa_device}" >&2
+        read -p "Please input MFA token code: " token_code >&2
+        aws_session=$(aws sts get-session-token --serial-number "${mfa_device}" --token-code "${token_code}")
+        break
+        ;;
+    pose)
+        accounts=$(aws organizations list-accounts)
+        if [ "$#" -gt "1" ]; then
+            account_name="$2"
+        else
+            echo "Available accounts:" >&2
+            echo "${accounts}" | jq -r ".Accounts[].Name" >&2
+            read -p "Please enter an account name: " account_name >&2
+        fi
+        if [ "$#" -gt "2" ]; then
+            role_name="$3"
+        else
+            role_name=OrganizationAccountAccessRole
+        fi
+        account_id=$(echo "${accounts}" | jq -r ".Accounts[] | select(.Name==\"${account_name}\").Id")
+        session_name="assume-account-role-for-cli"
+        aws_session=$(aws sts assume-role --role-arn "arn:aws:iam::${account_id}:role/${role_name}" --role-session-name "${session_name}")
+        break
+        ;;
+    clear)
+        echo "unset AWS_ACCESS_KEY_ID"
+        echo "unset AWS_SECRET_ACCESS_KEY"
+        echo "unset AWS_SESSION_TOKEN"
+        exit 0
+        break
+        ;;
+    *)
+        echo "Usage: $0 [MODE] [OPTION1] [OPTION2] ..." >&2
+        echo "MODE=mfa   generate a token reinforced by multi-factor authentication (this is the default mode)" >&2
+        echo "           OPTION1 can be the ARN of an MFA device. The user's first device is taken by default, otherwise." >&2
+        echo "MODE=pose  impersonate another account using an IAM role on that account" >&2
+        echo "           OPTION1 must be the name of the target account in the organization." >&2
+        echo "           OPTION2 can be a the name of a specific IAM role on the target account. OrganizationAccountAccessRole is used by default." >&2
+        echo "MODE=clear clears the session token, secret key and access key from the environment" >&2
+        exit 1
+        ;;
+esac
 
-aws_session=$(aws sts get-session-token --serial-number "${mfa_device}" --token-code "${token_code}")
 aws_key=$(echo "${aws_session}" | jq -r '.Credentials.AccessKeyId')
 aws_secret=$(echo "${aws_session}" | jq -r '.Credentials.SecretAccessKey')
 aws_token=$(echo "${aws_session}" | jq -r '.Credentials.SessionToken')
