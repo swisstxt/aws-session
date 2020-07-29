@@ -29,20 +29,20 @@ case "$mode" in
         break
         ;;
     pose)
-        accounts=$(aws organizations list-accounts)
         if [ "$#" -gt "1" ]; then
-            account_name="$2"
+            account_id="$2"
         else
+            accounts=$(aws organizations list-accounts)
             echo "Available accounts:" >&2
             echo "${accounts}" | jq -r ".Accounts[].Name" >&2
             read -p "Please enter an account name: " account_name >&2
+            account_id=$(echo "${accounts}" | jq -r ".Accounts[] | select(.Name==\"${account_name}\").Id")
         fi
         if [ "$#" -gt "2" ]; then
             role_name="$3"
         else
             role_name=OrganizationAccountAccessRole
         fi
-        account_id=$(echo "${accounts}" | jq -r ".Accounts[] | select(.Name==\"${account_name}\").Id")
         session_name="assume-account-role-for-cli"
         aws_session=$(aws sts assume-role --role-arn "arn:aws:iam::${account_id}:role/${role_name}" --role-session-name "${session_name}")
         break
@@ -55,13 +55,16 @@ case "$mode" in
         break
         ;;
     *)
-        echo "Usage: $0 [MODE] [OPTION1] [OPTION2] ..." >&2
-        echo "MODE=mfa   generate a token reinforced by multi-factor authentication (this is the default mode)" >&2
-        echo "           OPTION1 can be the ARN of an MFA device. The user's first device is taken by default, otherwise." >&2
-        echo "MODE=pose  impersonate another account using an IAM role on that account" >&2
-        echo "           OPTION1 must be the name of the target account in the organization." >&2
-        echo "           OPTION2 can be a the name of a specific IAM role on the target account. OrganizationAccountAccessRole is used by default." >&2
-        echo "MODE=clear clears the session token, secret key and access key from the environment" >&2
+        echo "Usage: $0 [MODE] [OPTIONS]..." >&2
+        echo "aws-session mfa [DEVICE-ARN]" >&2
+        echo "    Generate a token reinforced by multi-factor authentication. (this is the default mode)" >&2
+        echo "    DEVICE-ARN can be the ARN of an MFA device. The user's first device is taken by default, otherwise." >&2
+        echo "aws-session pose [ACCOUNT-ID] [ROLE]" >&2
+        echo "    Impersonate another account using an IAM role on that account." >&2
+        echo "    ACCOUNT-ID can be the ID of the target account Will show a list of organization accounts otherwise." >&2
+        echo "    ROLE can be a the name of a specific IAM role on the target account. OrganizationAccountAccessRole is used by default." >&2
+        echo "aws-session clear" >&2
+        echo "    clears the session token, secret key and access key from the environment" >&2
         exit 1
         ;;
 esac
