@@ -1,5 +1,3 @@
-aws-session - AWS temporary session token script to use MFA with CLI tools
-
 Copyright (c) 2020, SWISS TXT AG
 All rights reserved.
 
